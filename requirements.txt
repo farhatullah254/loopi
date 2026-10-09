@@ -1,0 +1,6 @@
+anthropic
+playwright
+yt-dlp[default,curl-cffi]
+imageio-ffmpeg
+pillow
+pypdf
