@@ -8,7 +8,7 @@ import threading
 import time
 import traceback
 
-from . import db, frames, llm, review, validate, youtube
+from . import db, frames, listing, llm, review, validate, youtube
 from .paths import project_dir
 
 STAGES = ["new", "fetched", "cleaned", "extracted", "ready"]
@@ -104,6 +104,10 @@ def _run(pid: int, target: str):
     prog = _progress(pid)
     db.update_project(pid, status="running")
     pdir = project_dir(pid)
+    if target == "listing":
+        _make_listing(pid, prog, strict=True)
+        db.update_project(pid, status="idle", progress="Listing photos ready")
+        return
     stage = p["stage"]
     want = STAGES.index(target)
 
@@ -156,8 +160,24 @@ def _run(pid: int, target: str):
         _grab_all(pid, p, prog)
         review.run(p["pattern"], p.get("cleaned") or [], project_dir(pid), prog)
         db.update_project(pid, pattern=p["pattern"], stage="ready")
+        _make_listing(pid, prog, strict=False)
 
     db.update_project(pid, status="idle", progress="Done")
+
+
+def _make_listing(pid, prog, strict: bool):
+    """Listing photos are a bonus on a normal run: a failure there must not fail the pattern."""
+    p = db.get_project(pid)
+    if not p.get("pattern"):
+        raise RuntimeError("Extract the pattern first; the listing photos need its finished-object moments")
+    try:
+        db.update_project(pid, listing=listing.build(pid, p, prog))
+    except Exception as e:
+        if strict:
+            raise
+        traceback.print_exc()
+        prev = p.get("listing") or {}
+        db.update_project(pid, listing={**prev, "error": f"{type(e).__name__}: {e}"})
 
 
 def _fetch(pid, p, pdir, prog):

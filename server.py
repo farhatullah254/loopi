@@ -100,7 +100,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(200, path.read_bytes(), ctype, hdrs)
 
     def _file(self, pid, kind, name):
-        if kind not in ("frames", "uploads", "pdf", "video", "thumb") or "/" in name or ".." in name:
+        if kind not in ("frames", "uploads", "pdf", "video", "thumb", "listing") or "/" in name or ".." in name:
             return self._send(404, "not found", "text/plain")
         pdir = PROJECTS_DIR / str(pid)
         path = (pdir / ("" if kind in ("pdf", "video", "thumb") else kind) / name).resolve()
@@ -271,6 +271,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True})
             if rest == ["pattern"] and method == "PATCH":
                 return self._patch_pattern(pid)
+            if rest == ["listing"] and method == "POST":
+                if not db.get_project(pid).get("pattern"):
+                    raise ValueError("Extract the pattern first; the listing photos need its finished-object moments")
+                if not jobs.enqueue(pid, "listing"):
+                    raise ValueError("Project is running; wait for it to finish")
+                return self._send(200, {"ok": True})
+            if rest == ["listing.zip"] and method == "GET":
+                return self._listing_zip(pid)
             if rest == ["grab"] and method == "POST":
                 return self._grab(pid)
             if rest == ["upload"] and method == "POST":
@@ -346,6 +354,23 @@ class Handler(BaseHTTPRequestHandler):
         pattern["validation"] = validate.run(pattern)
         db.update_project(pid, pattern=pattern)
         return self._send(200, {"validation": pattern["validation"]})
+
+    def _listing_zip(self, pid):
+        import io
+        import zipfile
+        full = db.get_project(pid)
+        photos = (full.get("listing") or {}).get("photos") or []
+        if not photos:
+            raise ValueError("No listing photos yet")
+        ldir = project_dir(pid) / "listing"
+        slug = render._slug((full.get("pattern") or {}).get("title") or full.get("title") or f"pattern-{pid}")
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as z:
+            for n, ph in enumerate(photos, 1):
+                if (ldir / ph["file"]).exists():
+                    z.write(ldir / ph["file"], f"{slug}-listing-{n}.jpg")
+        return self._send(200, buf.getvalue(), "application/zip",
+                          {"Content-Disposition": f'attachment; filename="{slug}-listing-photos.zip"'})
 
     def _grab(self, pid):
         """Grab a burst at a time for a step image (or final image), pick with vision, save."""

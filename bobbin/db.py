@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS review_log (
 );
 """
 
-JSON_COLS = ("captions_json", "cleaned_json", "pattern_json", "uploads_json")
+JSON_COLS = ("captions_json", "cleaned_json", "pattern_json", "uploads_json", "listing_json")
 
 
 def _conn():
@@ -66,6 +66,7 @@ def _conn():
 
 MIGRATIONS = [
     "ALTER TABLE projects ADD COLUMN thumb_file TEXT",
+    "ALTER TABLE projects ADD COLUMN listing_json TEXT",
 ]
 
 
@@ -161,7 +162,7 @@ def update_project(pid: int, **fields):
     if not fields:
         return
     for k in list(fields):
-        if k in ("captions", "cleaned", "pattern", "uploads"):
+        if k in ("captions", "cleaned", "pattern", "uploads", "listing"):
             fields[k + "_json"] = json.dumps(fields.pop(k))
     fields["updated_at"] = time.time()
     cols = ", ".join(f"{k}=?" for k in fields)

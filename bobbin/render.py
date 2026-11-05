@@ -28,12 +28,21 @@ def _frame_src(pdir: Path, img: dict) -> str | None:
     return (pdir / sub / img["chosen"]).as_uri()
 
 
+def listing_photos(project: dict) -> list[str]:
+    pdir = project_dir(project["id"])
+    photos = (project.get("listing") or {}).get("photos") or []
+    return [(pdir / "listing" / ph["file"]).as_uri() for ph in photos if (pdir / "listing" / ph["file"]).exists()]
+
+
 def cover_image(project: dict) -> str | None:
-    """Uploaded featured image, else the YouTube thumbnail, else the best final frame."""
+    """Uploaded featured image, else listing photo 1, else the YouTube thumbnail, else the best final frame."""
     pdir = project_dir(project["id"])
     up = project.get("uploads") or {}
     if up.get("featured"):
         return (pdir / "uploads" / up["featured"][0]).as_uri()
+    listing = listing_photos(project)
+    if listing:
+        return listing[0]
     if project.get("thumb_file") and (pdir / project["thumb_file"]).exists():
         return (pdir / project["thumb_file"]).as_uri()
     finals = project.get("pattern", {}).get("final_images", [])
@@ -46,10 +55,14 @@ def cover_image(project: dict) -> str | None:
 
 
 def final_images(project: dict) -> list[str]:
-    """Uploaded finals win; AI frames only when none uploaded or explicitly kept."""
+    """Uploaded finals win, then listing photos 2 and 3 (photo 1 is the cover); the raw AI-picked
+    frames only when neither exists or they are explicitly kept."""
     pdir = project_dir(project["id"])
     up = project.get("uploads") or {}
     out = [(pdir / "uploads" / f).as_uri() for f in up.get("final", [])[:2]]
+    if not out:
+        listing = listing_photos(project)
+        out = listing[1:] if len(listing) > 1 else listing
     if not out or up.get("keep_ai_finals"):
         out += [s for s in (_frame_src(pdir, i) for i in project["pattern"].get("final_images", [])) if s]
     return out

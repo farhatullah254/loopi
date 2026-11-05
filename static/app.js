@@ -335,6 +335,7 @@ function renderWorkspace() {
   const m = $("#main"); m.innerHTML = "";
   m.append(headEl());
   const p = project;
+  if (p.pattern) m.append(listingCard());
   m.append(imagesCard());
   if (STAGES.indexOf(p.stage) >= 1) m.append(videoCard());
   if (p.pattern) {
@@ -344,6 +345,37 @@ function renderWorkspace() {
   }
   if (STAGES.indexOf(p.stage) >= 1) m.append(transcriptCard());
   m.append(versionsCard());
+}
+
+// ---- Etsy listing photos (3 finished-object views, 4:3 at 2400x1800)
+async function makeListing() {
+  try { await api(`/projects/${project.id}/listing`, "POST", {}); toast("Making listing photos… a few minutes", 4000); await refresh(); } catch (e) { toast(e.message, 5000); }
+}
+function listingCard() {
+  const L = project.listing || {};
+  const photos = L.photos || [];
+  const running = ACTIVE.includes(project.status);
+  const slug = ((project.pattern && project.pattern.title) || project.title || `pattern-${project.id}`).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+  const src = f => `/files/${project.id}/listing/${f}`;
+  const tile = (ph, n) => el("div", { class: "lphoto" },
+    el("a", { href: src(ph.file), target: "_blank" }, el("img", { src: src(ph.file), alt: `Listing photo ${n}` })),
+    el("div", { class: "lmeta" }, el("b", {}, n === 1 ? "1 · Listing cover" : `${n}`), ph.t != null ? ` at ${ts(ph.t)}` : ""),
+    ph.reason ? el("div", { class: "muted lreason" }, ph.reason) : null,
+    el("div", { class: "form-row", style: "justify-content:center;margin:6px 0 0" },
+      el("a", { href: src(ph.file), download: `${slug}-listing-${n}.jpg` }, el("button", { class: "small" }, "Download")),
+      el("a", { href: src(ph.unedited), download: `${slug}-listing-${n}-unedited.jpg`, class: "muted", style: "font-size:11.5px" }, "unedited")));
+  return el("div", { class: "card" },
+    el("div", { class: "form-row", style: "margin:0 0 6px;align-items:center" },
+      el("h2", { style: "margin:0" }, "Etsy listing photos"),
+      el("span", { style: "flex:1" }),
+      photos.length ? el("a", { href: `/api/projects/${project.id}/listing.zip` }, el("button", {}, "Download all (zip)")) : null,
+      el("button", { class: "ghost", disabled: running ? "1" : null, onclick: makeListing }, photos.length ? "Remake" : "Make listing photos")),
+    el("p", { class: "help" }, "Three views of the finished piece, 4:3 at 2400×1800, from the video at full resolution. No AI edits: Claude only picks the frames; colour, contrast and sharpness are corrected in code. Photo 1 is the PDF cover unless you upload a featured image; 2 and 3 go in the Finishing section."),
+    L.warning ? el("div", { class: "errbox" }, L.warning) : null,
+    L.error ? el("div", { class: "errbox" }, "Last attempt failed: " + L.error) : null,
+    photos.length ? el("div", { class: "lphotos" }, ...photos.map((ph, i) => tile(ph, i + 1)))
+      : el("div", { class: "muted" }, running ? "Will be made when this run finishes." : "None yet."),
+    L.source_height ? el("div", { class: "muted", style: "font-size:11.5px;margin-top:8px" }, `Source ${L.source_height}p`, L.note ? ` · ${L.note}` : "") : null);
 }
 
 // ---- your images (featured + finals)
